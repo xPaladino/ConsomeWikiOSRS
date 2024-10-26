@@ -1,5 +1,5 @@
 import os
-
+from chatgpt_test import pergunta_chatgpt
 from flask import Flask, request
 import requests
 from unidecode import unidecode
@@ -17,20 +17,13 @@ API_URL = os.getenv('API_URL')
 def arruma_texto(text):
     return unidecode(text).lower()
 
-saudacoes = [
-    "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
-    "oi tudo bem?", "oi tudo bem", "tudo bem?", "e ai", "ola tudo bem", "olá tudo bem?"
-]
-def verifica_saudacao(text):
-    text_normalizado = arruma_texto(text)
-    return any(saudacao in text_normalizado for saudacao in saudacoes)
-
 def pega_nome(item_name):
     url = f"https://api.weirdgloop.org/exchange/history/osrs/latest?name={item_name}"
     response = requests.get(url)
-
+    print(f' tentando consultar {item_name} na {url}')
     if response.status_code == 200:
         data = response.json()
+        print(f"Resposta da API: {data}")
         if data:
             first_item_name = list(data.keys())[0]
             first_item_data = data[first_item_name]
@@ -49,19 +42,24 @@ def formata_preco(valor):
     else:
         return f"{valor:,}"
 
-@app.route("/webhook", methods=["GET","POST"])
+
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
     if request.method == "GET":
         verify_token = tokenmeta
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
+
         if mode and token:
             if mode == "subscribe" and token == verify_token:
                 print("VERIFICADO")
                 return challenge, 200
             else:
-                return "Erro", 403
+                return "Token de verificação inválido", 403
+        else:
+            return "Parâmetros ausentes", 400
 
     if request.method == "POST":
         data = request.get_json()
@@ -77,12 +75,8 @@ def webhook():
 
                 text = message['text']['body']
                 texto_normalizado = arruma_texto(text)
-                if verifica_saudacao(text):
-                    response_message = ("Olá! Sou um webhook configurado através do Python para consumir uma API pré determinada!\n"
-                                        "para começar, digite !price nomedoproduto")
-                    send_whatsapp_message(from_number, response_message)
 
-                elif texto_normalizado.startswith('!price '):
+                if texto_normalizado.startswith('!price '):
                     item_name = text[len('!price '):].strip()
                     item_name_retorno, item_data = pega_nome(item_name)
 
@@ -96,6 +90,10 @@ def webhook():
                         response_message = "Item não encontrado."
 
                     send_whatsapp_message(from_number, response_message)
+                    #sempre comentar essa linha quando parar de testar, lembre-se que gasta TOKEN na openai.
+                else:
+                    resposta_chatgpt = pergunta_chatgpt(text)
+                    send_whatsapp_message(from_number, resposta_chatgpt)
 
         return "OK", 200
 
@@ -119,5 +117,5 @@ def send_whatsapp_message(to, body):
 
         print(f"Erro ao enviar a mensagem: {response.status_code}, {response.text}")
 
-if __name__ == "_main_":
+if __name__ == "__main__":
     app.run(port=5000)
